@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # The Visual Multi-Agent Workflow Core
+  n8n-orchestrator:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n_agent_brain
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_SECURE_COOKIE=false
+      - GENAI_MODELS_ENABLED=true
+    volumes:
+      - n8n_storage:/home/node/.n8n
+
+  # Unified Time-Series Telemetry Collector
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: devops_metrics_collector
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus_storage:/prometheus
+
+  # Executive-Facing Observability Interface
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: cloud_observability_ui
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_storage:/var/lib/grafana
+
+volumes:
+  n8n_storage:
+  prometheus_storage:
+  grafana_storage:

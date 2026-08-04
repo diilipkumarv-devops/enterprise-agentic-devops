@@ -1,0 +1,26 @@
+┌────────────────────────────────────────────────────────┐
+│      ENTERPRISE AGENTIC DEVOPS PLATFORM ARCHITECTURE    │
+└────────────────────────────────────────────────────────┘
+                           │
+                           ▼ [SRE Incident Metrics Alerts / Webhooks]
+┌────────────────────────────────────────────────────────┐
+│         LOCAL DOCKER PLANE CONTROL RUNTIME HUB         │
+│  ├── n8n Orchestrator Engine (Multi-Agent Workflow)     │
+│  ├── Prometheus Engine (Metrics Scraper Pipeline)      │
+│  └── Grafana Dashboard System (Telemetry Analytics Dashboard) │
+└────────────────────────────────────────────────────────┘
+                           │
+                           ▼ [Standard I/O Secure Streams]
+┌────────────────────────────────────────────────────────┐
+│             CUSTOM PYTHON DEVOPS MCP CORE              │
+│   ├── tool: inspect_system_health()                    │
+│   └── tool: fetch_incident_logs()                       │
+└────────────────────────────────────────────────────────┘
+                           │
+              ┌────────────┴────────────┐
+              ▼                         ▼
+┌───────────────────────────┐ ┌───────────────────────────┐
+│  MICROSOFT AZURE DOMAIN   │ │    AMAZON WEB SERVICES    │
+│  └── Managed AKS Cluster  │ │  └── Managed EKS Cluster │
+│      (Private CNI VNet)   │ │      (Private IRSA VPC)   │
+└───────────────────────────┘ └───────────────────────────┘

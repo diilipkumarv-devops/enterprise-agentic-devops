@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform-agent-runner
+  namespace: default
+  labels:
+    app: agent-runner
+    tier: pipeline
+spec:
+  replicas: 3 # High Availability Constraint for zero-downtime execution
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: agent-runner
+  template:
+    metadata:
+      labels:
+        app: agent-runner
+    spec:
+      containers:
+        - name: devops-agent-engine
+          image: docker.n8n.io/n8nio/n8n:latest # Reuses the lightweight engine build
+          ports:
+            - containerPort: 5678
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: EXPOSE_MCP_PROXY
+              value: "true"
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: platform-agent-service
+  namespace: default
+spec:
+  type: ClusterIP # Internal network isolation, accessible only within the VNet/VPC boundary
+  ports:
+    - port: 80
+      targetPort: 5678
+      protocol: TCP
+  selector:
+    app: agent-runner
