@@ -3,6 +3,8 @@
 import asyncio
 import re
 
+from src.agent.decision_engine import make_incident_decision
+
 from src.agent.mcp_client import (
     get_system_health,
     get_incident_logs,
@@ -86,15 +88,16 @@ async def run_incident_workflow(
     2. Detect the failing Kubernetes pod.
     3. Retrieve incident logs through MCP.
     4. Perform root-cause analysis.
-    5. Build a remediation proposal.
-    6. Apply the human approval gate.
-    7. Simulate remediation only when approved.
+    5. Let the agent decision engine classify the incident.
+    6. Build a remediation proposal.
+    7. Apply the human approval gate.
+    8. Simulate remediation only when approved.
     """
 
-    # STEP 1 — Observe infrastructure through MCP.
+    # STEP 1 - Observe infrastructure through MCP.
     health_report = await get_system_health()
 
-    # STEP 2 — Detect failing workload.
+    # STEP 2 - Detect failing workload.
     failing_pod = extract_failing_pod(health_report)
 
     if not failing_pod:
@@ -104,34 +107,46 @@ async def run_incident_workflow(
                 "root_cause": "No failing Kubernetes pod detected.",
                 "recommendation": "No remediation required.",
             },
+            "agent_decision": {
+                "severity": "none",
+                "confidence": 1.0,
+                "decision": "no_action",
+                "target": None,
+                "requires_human_approval": False,
+                "reason": "No infrastructure incident was detected.",
+            },
             "remediation_plan": None,
             "approval": None,
             "execution": None,
         }
 
-    # STEP 3 — Retrieve logs through MCP.
+    # STEP 3 - Retrieve logs through MCP.
     incident_logs = await get_incident_logs(failing_pod)
 
-    # STEP 4 — Root-cause analysis.
+    # STEP 4 - Perform root-cause analysis.
     incident = analyze_incident(
         health_report=health_report,
         incident_logs=incident_logs,
     )
 
-    # STEP 5 — Generate remediation proposal.
+    # STEP 5 - Agent decision engine.
+    agent_decision = make_incident_decision(incident)
+
+    # STEP 6 - Generate remediation proposal.
     remediation_plan = build_remediation_plan(incident)
 
-    # STEP 6 — Apply human approval policy.
+    # STEP 7 - Apply human approval policy.
     approval = request_human_approval(
         remediation_plan,
         approved=human_approved,
     )
 
-    # STEP 7 — Execute SAFE simulation.
+    # STEP 8 - Execute SAFE remediation simulation.
     execution = simulate_remediation(approval)
 
     return {
         "incident": incident,
+        "agent_decision": agent_decision,
         "remediation_plan": remediation_plan,
         "approval": approval,
         "execution": execution,
@@ -139,10 +154,11 @@ async def run_incident_workflow(
 
 
 def print_workflow_result(result: dict) -> None:
-    """Display the Agentic DevOps workflow result."""
+    """Display the complete Agentic DevOps workflow result."""
 
     print("\n=== ENTERPRISE AGENTIC DEVOPS INCIDENT WORKFLOW ===")
 
+    # Incident analysis
     incident = result["incident"]
 
     print("\n--- INCIDENT ANALYSIS ---")
@@ -150,6 +166,16 @@ def print_workflow_result(result: dict) -> None:
     for key, value in incident.items():
         print(f"{key}: {value}")
 
+    # Agent decision
+    agent_decision = result.get("agent_decision")
+
+    if agent_decision:
+        print("\n--- AGENT DECISION ---")
+
+        for key, value in agent_decision.items():
+            print(f"{key}: {value}")
+
+    # Remediation plan
     remediation_plan = result.get("remediation_plan")
 
     if remediation_plan:
@@ -158,19 +184,23 @@ def print_workflow_result(result: dict) -> None:
         for key, value in remediation_plan.items():
             print(f"{key}: {value}")
 
+    # Human approval
     approval = result.get("approval")
 
     if approval:
         print("\n--- HUMAN APPROVAL GATE ---")
+
         print(
             f"approval_status: "
             f"{approval.get('approval_status')}"
         )
+
         print(
             f"execution_allowed: "
             f"{approval.get('execution_allowed')}"
         )
 
+    # Execution
     execution = result.get("execution")
 
     if execution:
@@ -182,9 +212,11 @@ def print_workflow_result(result: dict) -> None:
 
 if __name__ == "__main__":
 
-    # Default is deliberately FALSE.
+    # Demo/testing only.
+    #
     # Production-changing actions must never be automatically approved.
-    HUMAN_APPROVED = True
+    # Keep this False when demonstrating the safety gate.
+    HUMAN_APPROVED = False
 
     workflow_result = asyncio.run(
         run_incident_workflow(
