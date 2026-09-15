@@ -4,7 +4,7 @@ import asyncio
 import re
 
 from src.agent.decision_engine import make_incident_decision
-
+from src.agent.multi_agent_orchestrator import MultiAgentOrchestrator
 from src.agent.mcp_client import (
     get_system_health,
     get_incident_logs,
@@ -151,6 +151,44 @@ async def run_incident_workflow(
         "approval": approval,
         "execution": execution,
     }
+async def run_multi_agent_incident_workflow(
+    human_approved: bool = False,
+) -> dict:
+    """
+    Collect real incident evidence through MCP and process it
+    through the multi-agent orchestration layer.
+    """
+
+    # STEP 1 - Observe infrastructure through MCP.
+    health_report = await get_system_health()
+
+    # STEP 2 - Detect failing Kubernetes workload.
+    failing_pod = extract_failing_pod(health_report)
+
+    if not failing_pod:
+        incident = {
+            "status": "healthy",
+            "root_cause": "No failing Kubernetes pod detected.",
+            "recommendation": "No remediation required.",
+        }
+
+    else:
+        # STEP 3 - Retrieve real incident logs through MCP.
+        incident_logs = await get_incident_logs(failing_pod)
+
+        # STEP 4 - Convert MCP evidence into structured incident data.
+        incident = analyze_incident(
+            health_report=health_report,
+            incident_logs=incident_logs,
+        )
+
+    # STEP 5 - Hand structured evidence to specialized agents.
+    orchestrator = MultiAgentOrchestrator()
+
+    return orchestrator.run(
+        incident=incident,
+        human_approved=human_approved,
+    )
 
 
 def print_workflow_result(result: dict) -> None:
@@ -216,12 +254,30 @@ if __name__ == "__main__":
     #
     # Production-changing actions must never be automatically approved.
     # Keep this False when demonstrating the safety gate.
+    #  if __name__ == "__main__":
+
+    # Production-changing actions must never be automatically approved.
     HUMAN_APPROVED = False
 
     workflow_result = asyncio.run(
-        run_incident_workflow(
+        run_multi_agent_incident_workflow(
             human_approved=HUMAN_APPROVED,
         )
     )
 
-    print_workflow_result(workflow_result)
+    print("\n=== MCP-DRIVEN MULTI-AGENT DEVOPS WORKFLOW ===")
+
+    print("\n--- INCIDENT ---")
+    print(workflow_result["incident"])
+
+    print("\n--- ANALYZER AGENT ---")
+    print(workflow_result["analyzer"])
+
+    print("\n--- DECISION AGENT ---")
+    print(workflow_result["decision_agent"])
+
+    print("\n--- REMEDIATION AGENT ---")
+    print(workflow_result["remediation_agent"])
+
+    print("\n--- REVIEWER / POLICY AGENT ---")
+    print(workflow_result["reviewer_agent"])
