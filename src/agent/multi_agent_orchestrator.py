@@ -2,6 +2,7 @@
 
 from src.agent.decision_engine import make_incident_decision
 from src.agent.llm_reasoning import LLMReasoningService
+from src.agent.observability import WorkflowObserver, start_timer
 from src.agent.remediation import (
     build_remediation_plan,
     request_human_approval,
@@ -138,33 +139,142 @@ class MultiAgentOrchestrator:
         incident: dict,
         human_approved: bool = False,
     ) -> dict:
-        """Execute the complete multi-agent incident workflow."""
+        """Execute the observable multi-agent incident workflow."""
 
-        # STEP 1 - Analyze structured incident evidence.
+        # Create one observer for the complete workflow.
+        observer = WorkflowObserver()
+
+        # ---------------------------------------------------------
+        # STEP 1 - Analyzer Agent
+        # ---------------------------------------------------------
+        started_at = start_timer()
+
         analyzer_result = self.analyzer.run(incident)
 
-        # STEP 2 - Generate advisory LLM reasoning.
+        observer.record_agent(
+            agent="analyzer",
+            started_at=started_at,
+            status=analyzer_result["status"],
+            metadata={
+                "incident_status": incident.get("status"),
+                "target": incident.get("pod"),
+            },
+        )
+
+        # ---------------------------------------------------------
+        # STEP 2 - LLM Reasoning Agent
+        # ---------------------------------------------------------
+        started_at = start_timer()
+
         llm_result = self.llm_reasoning_agent.run(
             analyzer_result["incident"]
         )
 
-        # STEP 3 - Apply deterministic decision policy.
+        observer.record_agent(
+            agent="llm_reasoning",
+            started_at=started_at,
+            status=llm_result["status"],
+            metadata={
+                "confidence": (
+                    llm_result["reasoning"].get("confidence")
+                ),
+            },
+        )
+
+        # ---------------------------------------------------------
+        # STEP 3 - Decision Agent
+        # ---------------------------------------------------------
+        started_at = start_timer()
+
         decision_result = self.decision_agent.run(
             analyzer_result["incident"],
             llm_reasoning=llm_result["reasoning"],
         )
 
-        # STEP 4 - Build remediation proposal when policy allows.
+        observer.record_agent(
+            agent="decision",
+            started_at=started_at,
+            status=decision_result["status"],
+            metadata={
+                "severity": (
+                    decision_result["decision"].get("severity")
+                ),
+                "decision": (
+                    decision_result["decision"].get("decision")
+                ),
+                "requires_human_approval": (
+                    decision_result["decision"].get(
+                        "requires_human_approval"
+                    )
+                ),
+            },
+        )
+
+        # ---------------------------------------------------------
+        # STEP 4 - Remediation Agent
+        # ---------------------------------------------------------
+        started_at = start_timer()
+
         remediation_result = self.remediation_agent.run(
             analyzer_result["incident"],
             decision_result["decision"],
         )
 
-        # STEP 5 - Apply reviewer and human approval policy.
+        remediation_plan = remediation_result["plan"]
+
+        observer.record_agent(
+            agent="remediation",
+            started_at=started_at,
+            status=remediation_result["status"],
+            metadata={
+                "action_required": (
+                    remediation_plan.get("action_required")
+                    if remediation_plan
+                    else False
+                ),
+                "risk_level": (
+                    remediation_plan.get("risk_level")
+                    if remediation_plan
+                    else None
+                ),
+            },
+        )
+
+        # ---------------------------------------------------------
+        # STEP 5 - Reviewer / Policy Agent
+        # ---------------------------------------------------------
+        started_at = start_timer()
+
         reviewer_result = self.reviewer_agent.run(
-            remediation_result["plan"],
+            remediation_plan,
             human_approved=human_approved,
         )
+
+        approval = reviewer_result["approval"]
+        execution = reviewer_result["execution"]
+
+        observer.record_agent(
+            agent="reviewer",
+            started_at=started_at,
+            status=reviewer_result["status"],
+            metadata={
+                "approval_status": (
+                    approval.get("approval_status")
+                    if approval
+                    else None
+                ),
+                "execution_status": (
+                    execution.get("execution_status")
+                    if execution
+                    else None
+                ),
+            },
+        )
+
+        # ---------------------------------------------------------
+        # STEP 6 - Workflow Observability Summary
+        # ---------------------------------------------------------
+        observability = observer.summary()
 
         return {
             "incident": analyzer_result["incident"],
@@ -173,6 +283,7 @@ class MultiAgentOrchestrator:
             "decision_agent": decision_result,
             "remediation_agent": remediation_result,
             "reviewer_agent": reviewer_result,
+            "observability": observability,
         }
 
 
@@ -199,7 +310,10 @@ if __name__ == "__main__":
         human_approved=False,
     )
 
-    print("\n=== LLM-ENHANCED MULTI-AGENT DEVOPS WORKFLOW ===")
+    print(
+        "\n=== OBSERVABLE LLM-ENHANCED "
+        "MULTI-AGENT DEVOPS WORKFLOW ==="
+    )
 
     print("\n--- ANALYZER AGENT ---")
     print(result["analyzer"])
@@ -215,3 +329,37 @@ if __name__ == "__main__":
 
     print("\n--- REVIEWER / POLICY AGENT ---")
     print(result["reviewer_agent"])
+
+    print("\n--- OBSERVABILITY ---")
+
+    observability = result["observability"]
+
+    print(
+        f"workflow_id: "
+        f"{observability['workflow_id']}"
+    )
+
+    print(
+        f"total_duration_ms: "
+        f"{observability['total_duration_ms']}"
+    )
+
+    print(
+        f"agent_count: "
+        f"{observability['agent_count']}"
+    )
+
+    print(
+        f"completed_agents: "
+        f"{observability['completed_agents']}"
+    )
+
+    print(
+        f"failed_agents: "
+        f"{observability['failed_agents']}"
+    )
+
+    print("\n--- AGENT TRACES ---")
+
+    for trace in observability["traces"]:
+        print(trace)
