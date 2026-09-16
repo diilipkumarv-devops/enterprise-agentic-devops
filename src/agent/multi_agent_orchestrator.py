@@ -1,6 +1,7 @@
 """Multi-agent orchestration for the Enterprise Agentic DevOps platform."""
 
 from src.agent.decision_engine import make_incident_decision
+from src.agent.llm_reasoning import LLMReasoningService
 from src.agent.remediation import (
     build_remediation_plan,
     request_human_approval,
@@ -19,23 +20,61 @@ class AnalyzerAgent:
         }
 
 
-class DecisionAgent:
-    """Determines incident severity, confidence, and next action."""
+class LLMReasoningAgent:
+    """
+    Uses an LLM to generate advisory incident reasoning.
+
+    The LLM does not authorize or execute remediation.
+    """
+
+    def __init__(self) -> None:
+        self.service = LLMReasoningService()
 
     def run(self, incident: dict) -> dict:
+        reasoning = self.service.reason(incident)
+
+        return {
+            "agent": "llm_reasoning",
+            "status": reasoning.get("status", "unknown"),
+            "reasoning": reasoning,
+        }
+
+
+class DecisionAgent:
+    """
+    Applies deterministic decision policy.
+
+    This remains authoritative even when LLM reasoning is available.
+    """
+
+    def run(
+        self,
+        incident: dict,
+        llm_reasoning: dict | None = None,
+    ) -> dict:
+
         decision = make_incident_decision(incident)
 
         return {
             "agent": "decision",
             "status": "completed",
             "decision": decision,
+            "llm_advisory_available": (
+                llm_reasoning is not None
+                and llm_reasoning.get("status") == "completed"
+            ),
         }
 
 
 class RemediationAgent:
     """Creates a safe remediation proposal."""
 
-    def run(self, incident: dict, decision: dict) -> dict:
+    def run(
+        self,
+        incident: dict,
+        decision: dict,
+    ) -> dict:
+
         if decision["decision"] != "request_remediation":
             return {
                 "agent": "remediation",
@@ -89,6 +128,7 @@ class MultiAgentOrchestrator:
 
     def __init__(self) -> None:
         self.analyzer = AnalyzerAgent()
+        self.llm_reasoning_agent = LLMReasoningAgent()
         self.decision_agent = DecisionAgent()
         self.remediation_agent = RemediationAgent()
         self.reviewer_agent = ReviewerAgent()
@@ -98,19 +138,29 @@ class MultiAgentOrchestrator:
         incident: dict,
         human_approved: bool = False,
     ) -> dict:
-        """Execute the multi-agent incident workflow."""
+        """Execute the complete multi-agent incident workflow."""
 
+        # STEP 1 - Analyze structured incident evidence.
         analyzer_result = self.analyzer.run(incident)
 
-        decision_result = self.decision_agent.run(
+        # STEP 2 - Generate advisory LLM reasoning.
+        llm_result = self.llm_reasoning_agent.run(
             analyzer_result["incident"]
         )
 
+        # STEP 3 - Apply deterministic decision policy.
+        decision_result = self.decision_agent.run(
+            analyzer_result["incident"],
+            llm_reasoning=llm_result["reasoning"],
+        )
+
+        # STEP 4 - Build remediation proposal when policy allows.
         remediation_result = self.remediation_agent.run(
             analyzer_result["incident"],
             decision_result["decision"],
         )
 
+        # STEP 5 - Apply reviewer and human approval policy.
         reviewer_result = self.reviewer_agent.run(
             remediation_result["plan"],
             human_approved=human_approved,
@@ -119,6 +169,7 @@ class MultiAgentOrchestrator:
         return {
             "incident": analyzer_result["incident"],
             "analyzer": analyzer_result,
+            "llm_reasoning_agent": llm_result,
             "decision_agent": decision_result,
             "remediation_agent": remediation_result,
             "reviewer_agent": reviewer_result,
@@ -126,6 +177,7 @@ class MultiAgentOrchestrator:
 
 
 if __name__ == "__main__":
+
     example_incident = {
         "status": "incident_detected",
         "pod": "payment-gateway-processor-x92",
@@ -147,10 +199,13 @@ if __name__ == "__main__":
         human_approved=False,
     )
 
-    print("\n=== MULTI-AGENT DEVOPS WORKFLOW ===")
+    print("\n=== LLM-ENHANCED MULTI-AGENT DEVOPS WORKFLOW ===")
 
     print("\n--- ANALYZER AGENT ---")
     print(result["analyzer"])
+
+    print("\n--- LLM REASONING AGENT ---")
+    print(result["llm_reasoning_agent"])
 
     print("\n--- DECISION AGENT ---")
     print(result["decision_agent"])

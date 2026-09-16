@@ -1,5 +1,7 @@
 """Tests for Enterprise Agentic DevOps multi-agent orchestration."""
 
+from unittest.mock import patch
+
 from src.agent.multi_agent_orchestrator import MultiAgentOrchestrator
 
 
@@ -19,13 +21,51 @@ def build_database_incident() -> dict:
     }
 
 
+def build_mock_llm_reasoning() -> dict:
+    """Create deterministic advisory LLM reasoning for unit tests."""
+
+    return {
+        "status": "completed",
+        "diagnosis": (
+            "The workload cannot authenticate with its database backend."
+        ),
+        "reasoning_summary": (
+            "The incident evidence indicates a database "
+            "authentication failure."
+        ),
+        "recommended_action": (
+            "Validate the database credentials and secret configuration."
+        ),
+        "confidence": 0.90,
+    }
+
+
+def run_orchestrator(
+    human_approved: bool = False,
+) -> dict:
+    """
+    Run the orchestrator with mocked LLM reasoning.
+
+    Unit tests must not depend on a running Ollama service.
+    """
+
+    with patch(
+        "src.agent.multi_agent_orchestrator."
+        "LLMReasoningService.reason",
+        return_value=build_mock_llm_reasoning(),
+    ):
+        orchestrator = MultiAgentOrchestrator()
+
+        return orchestrator.run(
+            incident=build_database_incident(),
+            human_approved=human_approved,
+        )
+
+
 def test_multi_agent_decision_is_critical():
     """Decision Agent should classify DB authentication failure as critical."""
 
-    orchestrator = MultiAgentOrchestrator()
-
-    result = orchestrator.run(
-        incident=build_database_incident(),
+    result = run_orchestrator(
         human_approved=False,
     )
 
@@ -37,13 +77,25 @@ def test_multi_agent_decision_is_critical():
     assert decision["requires_human_approval"] is True
 
 
+def test_llm_advisory_is_available():
+    """Decision Agent should detect successful advisory LLM reasoning."""
+
+    result = run_orchestrator(
+        human_approved=False,
+    )
+
+    llm_result = result["llm_reasoning_agent"]
+    decision_agent = result["decision_agent"]
+
+    assert llm_result["status"] == "completed"
+    assert llm_result["reasoning"]["confidence"] == 0.90
+    assert decision_agent["llm_advisory_available"] is True
+
+
 def test_remediation_agent_builds_plan():
     """Remediation Agent should create a high-risk remediation plan."""
 
-    orchestrator = MultiAgentOrchestrator()
-
-    result = orchestrator.run(
-        incident=build_database_incident(),
+    result = run_orchestrator(
         human_approved=False,
     )
 
@@ -58,10 +110,7 @@ def test_remediation_agent_builds_plan():
 def test_policy_blocks_unapproved_remediation():
     """Reviewer Agent must block remediation without human approval."""
 
-    orchestrator = MultiAgentOrchestrator()
-
-    result = orchestrator.run(
-        incident=build_database_incident(),
+    result = run_orchestrator(
         human_approved=False,
     )
 
@@ -75,10 +124,7 @@ def test_policy_blocks_unapproved_remediation():
 def test_policy_allows_approved_simulation():
     """Reviewer Agent should allow safe simulation after approval."""
 
-    orchestrator = MultiAgentOrchestrator()
-
-    result = orchestrator.run(
-        incident=build_database_incident(),
+    result = run_orchestrator(
         human_approved=True,
     )
 
