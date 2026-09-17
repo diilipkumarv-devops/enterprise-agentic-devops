@@ -1,6 +1,7 @@
 """Multi-agent orchestration for the Enterprise Agentic DevOps platform."""
 
 from src.agent.decision_engine import make_incident_decision
+from src.agent.evaluation import WorkflowEvaluator
 from src.agent.guardrails import AgentGuardrails
 from src.agent.llm_reasoning import LLMReasoningService
 from src.agent.observability import WorkflowObserver, start_timer
@@ -134,6 +135,7 @@ class MultiAgentOrchestrator:
          self.decision_agent = DecisionAgent()
          self.remediation_agent = RemediationAgent()
          self.guardrails = AgentGuardrails()
+         self.evaluator = WorkflowEvaluator()
          self.reviewer_agent = ReviewerAgent()
 
     def run(
@@ -241,17 +243,61 @@ class MultiAgentOrchestrator:
                 ),
             },
         )
-
-        # ---------------------------------------------------------
-        # STEP 5 - Reviewer / Policy Agent
+                # ---------------------------------------------------------
+        # STEP 5 - Safety Guardrails
         # ---------------------------------------------------------
         started_at = start_timer()
 
-        reviewer_result = self.reviewer_agent.run(
-            remediation_plan,
-            human_approved=human_approved,
+        guardrail_result = self.guardrails.evaluate_workflow(
+            llm_reasoning=llm_result["reasoning"],
+            decision=decision_result["decision"],
+            remediation_plan=remediation_plan,
         )
 
+        observer.record_agent(
+            agent="guardrails",
+            started_at=started_at,
+            status=(
+                "completed"
+                if guardrail_result["safe_to_continue"]
+                else "blocked"
+            ),
+            metadata={
+                "guardrail_status": guardrail_result[
+                    "guardrail_status"
+                ],
+                "safe_to_continue": guardrail_result[
+                    "safe_to_continue"
+                ],
+                "violation_count": len(
+                    guardrail_result["violations"]
+                ),
+            },
+        )
+
+        # ---------------------------------------------------------
+        # STEP 6 - Reviewer / Policy Agent
+        # ---------------------------------------------------------
+        started_at = start_timer()
+
+        if guardrail_result["safe_to_continue"]:
+            reviewer_result = self.reviewer_agent.run(
+                remediation_plan,
+                human_approved=human_approved,
+            )
+        else:
+            reviewer_result = {
+                "agent": "reviewer",
+                "status": "blocked_by_guardrails",
+                "approval": None,
+                "execution": {
+                    "execution_status": "blocked",
+                    "message": (
+                        "Workflow blocked by safety guardrails. "
+                        "Remediation was not authorized."
+                    ),
+                },
+            }
         approval = reviewer_result["approval"]
         execution = reviewer_result["execution"]
 
@@ -272,23 +318,33 @@ class MultiAgentOrchestrator:
                 ),
             },
         )
-
         # ---------------------------------------------------------
-        # STEP 6 - Workflow Observability Summary
+        # STEP 7 - Workflow Observability Summary
         # ---------------------------------------------------------
         observability = observer.summary()
 
-        return {
+        # Build the workflow result before evaluation.
+        workflow_result = {
             "incident": analyzer_result["incident"],
             "analyzer": analyzer_result,
             "llm_reasoning_agent": llm_result,
             "decision_agent": decision_result,
             "remediation_agent": remediation_result,
+            "guardrails": guardrail_result,
             "reviewer_agent": reviewer_result,
             "observability": observability,
         }
 
+        # ---------------------------------------------------------
+        # STEP 8 - Evaluation & Audit
+        # ---------------------------------------------------------
+        evaluation_result = self.evaluator.evaluate(
+            workflow_result
+        )
 
+        workflow_result["evaluation"] = evaluation_result
+
+        return workflow_result
 if __name__ == "__main__":
 
     example_incident = {
