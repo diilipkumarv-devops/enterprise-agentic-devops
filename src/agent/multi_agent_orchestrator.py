@@ -1,6 +1,7 @@
 """Multi-agent orchestration for the Enterprise Agentic DevOps platform."""
 
 from src.agent.decision_engine import make_incident_decision
+from src.agent.guardrails import AgentGuardrails
 from src.agent.llm_reasoning import LLMReasoningService
 from src.agent.observability import WorkflowObserver, start_timer
 from src.agent.remediation import (
@@ -128,11 +129,12 @@ class MultiAgentOrchestrator:
     """Coordinates specialized agents for incident remediation."""
 
     def __init__(self) -> None:
-        self.analyzer = AnalyzerAgent()
-        self.llm_reasoning_agent = LLMReasoningAgent()
-        self.decision_agent = DecisionAgent()
-        self.remediation_agent = RemediationAgent()
-        self.reviewer_agent = ReviewerAgent()
+         self.analyzer = AnalyzerAgent()
+         self.llm_reasoning_agent = LLMReasoningAgent()
+         self.decision_agent = DecisionAgent()
+         self.remediation_agent = RemediationAgent()
+         self.guardrails = AgentGuardrails()
+         self.reviewer_agent = ReviewerAgent()
 
     def run(
         self,
