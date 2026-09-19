@@ -51,7 +51,7 @@ module "eks" {
   subnet_ids = module.vpc.private_subnets
 
   # Critical engineering design: Enables secure OpenID pod metadata auth token exchange
-  enable_irsa = true 
+  enable_irsa = true
 
   eks_managed_node_groups = {
     agent_compute_pool = {
