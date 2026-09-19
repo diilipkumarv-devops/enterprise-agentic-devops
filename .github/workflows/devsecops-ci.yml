@@ -1,55 +1,146 @@
-name: "Enterprise DevSecOps & Agentic Core Validation"
+name: "Enterprise Agentic DevOps CI & Security"
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
+
+permissions:
+  contents: read
 
 jobs:
-  # Job 1: Validates and tests the Agentic Python MCP Server
-  validate-mcp-core:
+  # ---------------------------------------------------------
+  # Job 1: Python application tests
+  # ---------------------------------------------------------
+  test-agentic-platform:
+    name: Python Tests
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Initialize Enterprise Python Runtime
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.11"
+          cache: "pip"
 
-      - name: Install System and FastMCP Dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install fastmcp kubernetes
+          python -m pip install -r requirements.txt
 
-      - name: Run MCP Server Compilation Audit
+      - name: Run application tests
         run: |
-          # Verifies your server can boot successfully without breaking syntax errors
-          python mcp-servers/devops_server.py --help || true
+          python -m pytest -q
 
-  # Job 2: Validates your Cloud Infrastructure Code for Security Vulnerabilities
-  audit-infrastructure-iac:
+
+  # ---------------------------------------------------------
+  # Job 2: Validate MCP core
+  # ---------------------------------------------------------
+  validate-mcp-core:
+    name: MCP Core Validation
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Terraform Binary
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install MCP dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install fastmcp kubernetes
+
+      - name: Compile MCP server
+        run: |
+          python -m py_compile mcp-servers/devops_server.py
+
+
+  # ---------------------------------------------------------
+  # Job 3: Build Docker image
+  # ---------------------------------------------------------
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs:
+      - test-agentic-platform
+      - validate-mcp-core
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build application image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          load: true
+          tags: enterprise-agentic-devops:ci
+
+
+      # -----------------------------------------------------
+      # Trivy scans the container image for known
+      # HIGH and CRITICAL vulnerabilities.
+      # -----------------------------------------------------
+      - name: Scan Docker image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "enterprise-agentic-devops:ci"
+          format: "table"
+          severity: "HIGH,CRITICAL"
+          ignore-unfixed: true
+          exit-code: "1"
+
+
+  # ---------------------------------------------------------
+  # Job 4: Terraform validation
+  # ---------------------------------------------------------
+  audit-infrastructure-iac:
+    name: Terraform IaC Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.5.0"
 
-      - name: Lint and Format Azure Terraform
+      - name: Validate Azure Terraform
+        shell: bash
         run: |
-          cd terraform/azure
-          terraform init -backend=false
-          terraform validate
+          if [ -d "terraform/azure" ]; then
+            cd terraform/azure
+            terraform init -backend=false
+            terraform fmt -check
+            terraform validate
+          else
+            echo "terraform/azure not present - skipping."
+          fi
 
-      - name: Lint and Format AWS Terraform
+      - name: Validate AWS Terraform
+        shell: bash
         run: |
-          cd terraform/aws
-          terraform init -backend=false
-          terraform validate
+          if [ -d "terraform/aws" ]; then
+            cd terraform/aws
+            terraform init -backend=false
+            terraform fmt -check
+            terraform validate
+          else
+            echo "terraform/aws not present - skipping."
+          fi
