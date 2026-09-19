@@ -1,7 +1,7 @@
 """LLM reasoning layer for the Enterprise Agentic DevOps platform."""
 
 from __future__ import annotations
-
+import os
 import json
 import urllib.error
 import urllib.request
@@ -19,11 +19,14 @@ class LLMReasoningService:
         self,
         #model: str = "llama3.2",
         model: str = "llama3.2:3b",
-        base_url: str = "http://localhost:11434",
+        base_url: str | None = None,
         timeout: int = 60,
     ) -> None:
         self.model = model
-        self.base_url = base_url.rstrip("/")
+        self.base_url = base_url or os.getenv(
+        "OLLAMA_BASE_URL",
+        "http://localhost:11434",
+     )
         self.timeout = timeout
 
     def build_prompt(self, incident: dict) -> str:

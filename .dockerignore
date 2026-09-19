@@ -1,0 +1,46 @@
+# Python virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Pytest cache
+.pytest_cache/
+
+# Git metadata
+.git/
+.gitignore
+
+# IDE/editor files
+.vscode/
+.idea/
+
+# Local cleanup/archive folders
+cleaned-repo/
+enterprise-agentic-devops/
+
+# Documentation and local artifacts not required at runtime
+documentation/
+architecture_map.txt
+
+# Infrastructure files are not required inside the API image
+terraform/
+k8s-manifests/
+docker-env/
+
+# Tests are executed in CI, not required in runtime image
+tests/
+
+# Environment/secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Logs and temporary files
+*.log
+*.tmp
