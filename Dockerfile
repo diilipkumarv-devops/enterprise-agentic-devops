@@ -1,6 +1,6 @@
 # Enterprise Agentic DevOps API
 # Python 3.11 slim runtime keeps the image smaller than the full Python image.
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # Prevent Python from writing .pyc files and ensure logs appear immediately.
 ENV PYTHONDONTWRITEBYTECODE=1

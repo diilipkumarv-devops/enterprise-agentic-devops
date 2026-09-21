@@ -74,3 +74,5 @@ watchfiles==1.2.0
 websockets==17.1
 zipp==4.1.0
 fastapi==0.141.1
+setuptools==84.0.0
+msgpack==1.2.1
