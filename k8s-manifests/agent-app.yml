@@ -1,54 +1,93 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: platform-agent-runner
+  name: enterprise-agentic-devops
   namespace: default
   labels:
-    app: agent-runner
-    tier: pipeline
+    app: enterprise-agentic-devops
+
 spec:
-  replicas: 3 # High Availability Constraint for zero-downtime execution
+  replicas: 2
+
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
+
   selector:
     matchLabels:
-      app: agent-runner
+      app: enterprise-agentic-devops
+
   template:
     metadata:
       labels:
-        app: agent-runner
+        app: enterprise-agentic-devops
+
     spec:
       containers:
-        - name: devops-agent-engine
-          image: docker.n8n.io/n8nio/n8n:latest # Reuses the lightweight engine build
+        - name: agentic-api
+          image: enterprise-agentic-devops:1.6
+          imagePullPolicy: IfNotPresent
+
           ports:
-            - containerPort: 5678
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
           env:
-            - name: NODE_ENV
-              value: "production"
-            - name: EXPOSE_MCP_PROXY
-              value: "true"
+            - name: OLLAMA_BASE_URL
+              value: "http://host.docker.internal:11434"
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+
           resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
             limits:
               cpu: "1"
               memory: "1Gi"
-            requests:
-              cpu: "500m"
-              memory: "512Mi"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: platform-agent-service
+  name: enterprise-agentic-devops
   namespace: default
+  labels:
+    app: enterprise-agentic-devops
+
 spec:
-  type: ClusterIP # Internal network isolation, accessible only within the VNet/VPC boundary
-  ports:
-    - port: 80
-      targetPort: 5678
-      protocol: TCP
+  type: ClusterIP
+
   selector:
-    app: agent-runner
+    app: enterprise-agentic-devops
+
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+      protocol: TCP
