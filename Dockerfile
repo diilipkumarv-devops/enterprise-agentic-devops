@@ -1,28 +1,40 @@
-# Enterprise Agentic DevOps API
-# Python 3.11 slim runtime keeps the image smaller than the full Python image.
-FROM python:3.11-slim-bookworm
+# ---------------------------------------------------------
+# Stage 1: Dependency builder
+# ---------------------------------------------------------
+FROM python:3.11-slim-bookworm AS builder
 
-# Prevent Python from writing .pyc files and ensure logs appear immediately.
+WORKDIR /build
+
+COPY requirements.txt .
+
+RUN python -m pip install --no-cache-dir --upgrade pip && \
+    python -m pip install --no-cache-dir \
+        --prefix=/install \
+        -r requirements.txt
+
+
+# ---------------------------------------------------------
+# Stage 2: Clean runtime image
+# ---------------------------------------------------------
+FROM python:3.11-slim-bookworm AS runtime
+
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Application directory inside the container.
 WORKDIR /app
 
-# Install Python dependencies first.
-# Keeping this before application code improves Docker layer caching.
-COPY requirements.txt .
+# Copy only installed Python dependencies from builder.
+COPY --from=builder /install /usr/local
 
-RUN python -m pip install --no-cache-dir \
-    --upgrade pip && \
-    python -m pip install --no-cache-dir \
-    -r requirements.txt
+# Runtime does not need setuptools/pip build tooling.
+# Remove them to reduce attack surface and eliminate
+# vulnerable vendored package metadata.
+RUN python -m pip uninstall -y setuptools pip
 
 # Copy application source code and MCP server definitions.
 COPY src ./src
 COPY mcp-servers ./mcp-servers
 
-# FastAPI/Uvicorn listens on port 8000.
 EXPOSE 8000
 
 # Start the Enterprise Agentic DevOps REST API.
