@@ -1,0 +1,60 @@
+{
+  "name": "Enterprise Agentic DevOps Incident Automation",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "38d4385a-3365-4c60-940b-fef796e45d55",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8080/incident",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"status\": \"incident_detected\",\n  \"pod\": \"payment-gateway-processor-x92\",\n  \"root_cause\": \"The application cannot authenticate with its relational database backend.\",\n  \"recommendation\": \"Validate the database credentials and secret configuration. Do not automatically modify production credentials without human approval.\",\n  \"human_approved\": false\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "375ab197-0ec8-487e-a378-ab99f9260274",
+      "name": "HTTP Request"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "75e208ee-8521-42b3-8051-0df3bc29c0e9",
+  "meta": {
+    "instanceId": "f7c9842144bbb520ed300fd6129743bf231abc081891c76babcc73529ed18a43"
+  },
+  "nodeGroups": [],
+  "id": "QTAchTYoRu0KXDkG",
+  "tags": []
+}
